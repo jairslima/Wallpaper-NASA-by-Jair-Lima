@@ -25,7 +25,7 @@ pyinstaller --onefile --windowed --name "Wallpaper NASA by Jair Lima" --clean ap
 
 ## Estado
 
-Versão inicial concluída, testada, instalada e publicada. O executável está em `C:\Users\jairs\bin`, o atalho está na área de trabalho e a tarefa automática está registrada no Windows. A atualização real pela API APOD foi validada em 29 de julho de 2026. O modo panorâmico foi validado na configuração local de dois monitores 1920 × 1080 lado a lado, produzindo uma composição contínua de 3840 × 1080.
+Versão inicial concluída, testada, instalada e publicada. O executável está em `C:\Users\jairs\bin`, o atalho está na área de trabalho e a tarefa automática está registrada no Windows. A atualização real pela API APOD foi validada em 29 de julho de 2026. O modo panorâmico foi validado na configuração local de dois monitores 1920 × 1080 lado a lado, produzindo uma composição contínua de 3840 × 1080. O autor confirmou visualmente o alinhamento correto nas duas telas por meio da captura `Captura de tela 2026-07-29 11.19.09.png`.
 
 Repositório: `https://github.com/jairslima/Wallpaper-NASA-by-Jair-Lima`
 
@@ -45,4 +45,5 @@ O corte usa o centro geométrico da imagem. Fotografias cujo assunto principal e
 * Executável gerado com PyInstaller.
 * Atualização automática confirmada no Agendador de Tarefas.
 * Modo panorâmico confirmado em dois monitores reais, sem alteração da proporção.
+* Continuidade da composição entre as telas confirmada visualmente pelo autor.
 * `.gitignore`, licença MIT e ausência de credenciais versionadas verificadas.

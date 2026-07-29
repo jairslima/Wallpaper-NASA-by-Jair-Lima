@@ -53,7 +53,7 @@ Execute `python app.py` para abrir a interface. Execute `python app.py --backgro
 
 ## Estado da entrega
 
-Implementação concluída em 29 de julho de 2026. O aplicativo foi testado, empacotado como executável Windows, instalado localmente e configurado para atualização automática.
+Implementação concluída em 29 de julho de 2026. O aplicativo foi testado, empacotado como executável Windows, instalado localmente e configurado para atualização automática. O panorama contínuo de 3840 × 1080 foi confirmado visualmente pelo autor em dois monitores reais.
 
 ## Evolução sugerida
 
