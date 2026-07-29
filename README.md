@@ -2,6 +2,8 @@
 
 Atualiza diariamente o papel de parede do Windows com a imagem astronômica do dia da NASA. Se a conexão falhar, a imagem anterior permanece intacta.
 
+Em computadores com vários monitores, o aplicativo cria uma composição panorâmica contínua. A imagem é ampliada proporcionalmente, centralizada e cortada somente nas bordas excedentes, sem deformação.
+
 ## Uso
 
 1. Abra `Wallpaper NASA by Jair Lima.exe`.

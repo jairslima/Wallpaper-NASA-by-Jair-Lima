@@ -15,6 +15,7 @@ import tkinter as tk
 import urllib.error
 import urllib.parse
 import urllib.request
+import winreg
 from datetime import date, timedelta
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -26,6 +27,7 @@ APP_NAME = "Wallpaper NASA by Jair Lima"
 API_URL = "https://api.nasa.gov/planetary/apod"
 TASK_NAME = APP_NAME
 APP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / APP_NAME
+SOURCE_PATH = APP_DIR / "imagem_nasa_original.jpg"
 WALLPAPER_PATH = APP_DIR / "wallpaper_atual.jpg"
 METADATA_PATH = APP_DIR / "metadata.json"
 LOG_PATH = APP_DIR / "app.log"
@@ -94,10 +96,81 @@ def download_and_validate(url: str, destination: Path, timeout: int = 60) -> Non
             temp_path.unlink()
 
 
+def enable_dpi_awareness() -> None:
+    if os.name != "nt":
+        return
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except (AttributeError, OSError):
+            pass
+
+
+def display_layout() -> tuple[int, int, int]:
+    if os.name != "nt":
+        raise RuntimeError("A detecção dos monitores requer Windows.")
+    user32 = ctypes.windll.user32
+    width = user32.GetSystemMetrics(78)
+    height = user32.GetSystemMetrics(79)
+    count = user32.GetSystemMetrics(80)
+    if width <= 0 or height <= 0:
+        raise RuntimeError("O Windows não informou uma área válida para os monitores.")
+    return width, height, max(count, 1)
+
+
+def prepare_panorama(source: Path, destination: Path, size: tuple[int, int]) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with Image.open(source) as original:
+            normalized = ImageOps.exif_transpose(original).convert("RGB")
+            panorama = ImageOps.fit(
+                normalized,
+                size,
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+        with tempfile.NamedTemporaryFile(
+            delete=False, dir=destination.parent, suffix=".panorama"
+        ) as temp:
+            temp_path = Path(temp.name)
+        panorama.save(temp_path, format="JPEG", quality=95, optimize=True)
+        os.replace(temp_path, destination)
+        temp_path = None
+    except (UnidentifiedImageError, OSError) as error:
+        raise RuntimeError(f"Não foi possível preparar a imagem panorâmica: {error}") from error
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
+
+
+def set_span_mode() -> None:
+    with winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER,
+        r"Control Panel\Desktop",
+        0,
+        winreg.KEY_SET_VALUE,
+    ) as key:
+        winreg.SetValueEx(key, "WallpaperStyle", 0, winreg.REG_SZ, "22")
+        winreg.SetValueEx(key, "TileWallpaper", 0, winreg.REG_SZ, "0")
+
+
 def set_wallpaper(path: Path) -> None:
     if os.name != "nt":
         raise RuntimeError("A troca automática do papel de parede requer Windows.")
-    ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path.resolve()), 3)
+    set_span_mode()
+    applied = ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path.resolve()), 3)
+    if not applied:
+        raise ctypes.WinError()
+
+
+def prepare_and_set_wallpaper(source: Path) -> tuple[int, int, int]:
+    width, height, count = display_layout()
+    prepare_panorama(source, WALLPAPER_PATH, (width, height))
+    set_wallpaper(WALLPAPER_PATH)
+    return width, height, count
 
 
 def save_metadata(item: dict) -> None:
@@ -118,15 +191,22 @@ def update_wallpaper() -> tuple[bool, str, dict]:
     previous = load_metadata()
     try:
         item = find_latest_image()
-        if item.get("date") == previous.get("date") and WALLPAPER_PATH.exists():
-            set_wallpaper(WALLPAPER_PATH)
-            return True, "A imagem de hoje já estava atualizada.", previous
-        image_url = item.get("hdurl") or item["url"]
-        download_and_validate(image_url, WALLPAPER_PATH)
-        set_wallpaper(WALLPAPER_PATH)
+        if item.get("date") != previous.get("date") or not SOURCE_PATH.exists():
+            if item.get("date") == previous.get("date") and WALLPAPER_PATH.exists():
+                shutil.copy2(WALLPAPER_PATH, SOURCE_PATH)
+            else:
+                image_url = item.get("hdurl") or item["url"]
+                download_and_validate(image_url, SOURCE_PATH)
+        width, height, count = prepare_and_set_wallpaper(SOURCE_PATH)
+        item["display"] = {"width": width, "height": height, "monitors": count}
         save_metadata(item)
-        log(f"Imagem aplicada: {item.get('date')} | {item.get('title', '')}")
-        return True, "Novo papel de parede aplicado com sucesso.", item
+        log(
+            f"Imagem aplicada: {item.get('date')} | {item.get('title', '')} | "
+            f"{width}x{height} em {count} monitor(es)"
+        )
+        if item.get("date") == previous.get("date"):
+            return True, f"Imagem panorâmica atualizada para {count} monitores.", item
+        return True, f"Novo papel de parede panorâmico aplicado em {count} monitores.", item
     except Exception as error:
         log(f"Atualização não realizada: {error}")
         if WALLPAPER_PATH.exists():
@@ -245,6 +325,12 @@ class WallpaperApp(tk.Tk):
         parts = [item.get("date", "")]
         if item.get("copyright"):
             parts.append(f"Crédito: {item['copyright']}")
+        display = item.get("display", {})
+        if display.get("width") and display.get("height"):
+            parts.append(
+                f"Panorâmica: {display['width']} × {display['height']} "
+                f"em {display.get('monitors', 1)} monitores"
+            )
         self.details.set("  •  ".join(part for part in parts if part))
         if WALLPAPER_PATH.exists():
             try:
@@ -285,6 +371,7 @@ class WallpaperApp(tk.Tk):
 
 
 def main() -> int:
+    enable_dpi_awareness()
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--install-schedule", action="store_true")

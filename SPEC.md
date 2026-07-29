@@ -12,6 +12,7 @@ Aplicativo Windows que consulta diariamente a Astronomy Picture of the Day, APOD
 * Download temporário, validação e substituição atômica.
 * Cache local em `%LOCALAPPDATA%\Wallpaper NASA by Jair Lima`.
 * Persistência de metadados da imagem atual.
+* Composição panorâmica centralizada na área virtual de todos os monitores.
 * Tarefa do Windows executada diariamente e ao iniciar uma sessão.
 * Uso de `DEMO_KEY` por padrão, com suporte opcional à variável local `NASA_API_KEY`.
 
@@ -32,6 +33,8 @@ Aplicativo Windows que consulta diariamente a Astronomy Picture of the Day, APOD
 * Nenhuma falha remove ou modifica a imagem anterior.
 * Quando `hdurl` não existe, o aplicativo usa `url`.
 * Em dias com vídeo, o aplicativo procura a imagem mais recente dos sete dias anteriores.
+* A imagem original é preservada separadamente do arquivo panorâmico aplicado.
+* O redimensionamento mantém a proporção e corta somente o excedente a partir do centro.
 * Chaves personalizadas ficam somente em variável de ambiente e nunca no repositório.
 
 ## Critérios de aceite
@@ -42,6 +45,7 @@ Aplicativo Windows que consulta diariamente a Astronomy Picture of the Day, APOD
 4. Exibir título, data, crédito e estado da atualização.
 5. Registrar tarefa automática sem exigir privilégios administrativos.
 6. Gerar executável Windows.
+7. Exibir uma composição contínua em todos os monitores sem deformar a imagem.
 
 ## Operação
 
@@ -53,4 +57,4 @@ Implementação concluída em 29 de julho de 2026. O aplicativo foi testado, emp
 
 ## Evolução sugerida
 
-Suporte opcional a papéis de parede independentes em configurações com múltiplos monitores.
+Permitir ao usuário ajustar manualmente o ponto focal do corte panorâmico quando o assunto principal não estiver no centro da fotografia.

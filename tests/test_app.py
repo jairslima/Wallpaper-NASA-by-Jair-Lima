@@ -59,6 +59,37 @@ class AppTests(unittest.TestCase):
             with Image.open(destination) as result:
                 self.assertEqual(result.size, (32, 24))
 
+    def test_prepare_panorama_preserves_ratio_and_uses_center_crop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.jpg"
+            destination = Path(directory) / "panorama.jpg"
+            image = Image.new("RGB", (400, 400), "red")
+            for y in range(100, 300):
+                for x in range(400):
+                    image.putpixel((x, y), (0, 128, 255))
+            image.save(source, "JPEG", quality=100)
+
+            app.prepare_panorama(source, destination, (400, 100))
+
+            with Image.open(destination) as result:
+                self.assertEqual(result.size, (400, 100))
+                red, green, blue = result.getpixel((200, 50))
+                self.assertLess(red, 20)
+                self.assertGreater(green, 100)
+                self.assertGreater(blue, 220)
+
+    def test_prepare_panorama_replaces_destination_atomically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.jpg"
+            destination = Path(directory) / "panorama.jpg"
+            Image.new("RGB", (100, 50), "purple").save(source, "JPEG")
+            destination.write_bytes(b"old")
+
+            app.prepare_panorama(source, destination, (200, 100))
+
+            with Image.open(destination) as result:
+                self.assertEqual(result.size, (200, 100))
+
 
 if __name__ == "__main__":
     unittest.main()
