@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.spec
+.env
+*.key
+secrets.*
+*.pkl
+*.log
+
