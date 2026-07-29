@@ -25,13 +25,23 @@ pyinstaller --onefile --windowed --name "Wallpaper NASA by Jair Lima" --clean ap
 
 ## Estado
 
-Primeira versão funcional, com cache resiliente, interface, atualização em segundo plano e agendamento.
+Versão inicial concluída, testada, instalada e publicada. O executável está em `C:\Users\jairs\bin`, o atalho está na área de trabalho e a tarefa automática está registrada no Windows. A atualização real pela API APOD foi validada em 29 de julho de 2026.
+
+Repositório: `https://github.com/jairslima/Wallpaper-NASA-by-Jair-Lima`
 
 ## Próximos passos
 
-Validar o comportamento em diferentes configurações de múltiplos monitores e acompanhar eventuais mudanças no serviço APOD.
+Melhoria opcional para uma versão futura: permitir escolher uma imagem diferente para cada monitor. Também convém acompanhar eventuais mudanças no serviço APOD.
 
 ## Problemas conhecidos
 
 A API pode limitar o uso compartilhado de `DEMO_KEY`. O usuário pode definir `NASA_API_KEY` no ambiente para usar uma chave pessoal.
 
+O aplicativo aplica uma única imagem ao papel de parede do Windows. Configurações avançadas com imagens independentes por monitor ainda não estão disponíveis.
+
+## Verificações finais
+
+* Testes automatizados da busca retroativa, validação de imagem e preservação do arquivo anterior aprovados.
+* Executável gerado com PyInstaller.
+* Atualização automática confirmada no Agendador de Tarefas.
+* `.gitignore`, licença MIT e ausência de credenciais versionadas verificadas.

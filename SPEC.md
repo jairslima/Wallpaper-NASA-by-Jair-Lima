@@ -47,3 +47,10 @@ Aplicativo Windows que consulta diariamente a Astronomy Picture of the Day, APOD
 
 Execute `python app.py` para abrir a interface. Execute `python app.py --background` para atualizar silenciosamente. Use `python app.py --install-schedule` para instalar a tarefa automática.
 
+## Estado da entrega
+
+Implementação concluída em 29 de julho de 2026. O aplicativo foi testado, empacotado como executável Windows, instalado localmente e configurado para atualização automática.
+
+## Evolução sugerida
+
+Suporte opcional a papéis de parede independentes em configurações com múltiplos monitores.
