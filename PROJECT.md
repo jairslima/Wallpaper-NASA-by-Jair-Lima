@@ -39,6 +39,12 @@ A API pode limitar o uso compartilhado de `DEMO_KEY`. O usuário pode definir `N
 
 O corte usa o centro geométrico da imagem. Fotografias cujo assunto principal esteja muito deslocado podem se beneficiar de um ajuste manual de ponto focal em uma versão futura.
 
+## Incidente: papel de parede parou de trocar (11-12/08/2026)
+
+Diagnóstico em 12/08/2026: o log (`app.log`) mostrou "read operation timed out" nos dias 10 e 11/08. Testes diretos revelaram que um dos dois servidores por trás de `api.nasa.gov` (`96.127.115.191`) respondia HTTP 503 enquanto o outro (`56.136.115.176`) respondia normalmente, instabilidade transitória do lado da NASA. O Agendador de Tarefas estava funcionando corretamente (`LastRunTime`/`NextRunTime` em dia, sem execuções perdidas); o problema era que `find_latest_image` fazia apenas uma tentativa por execução e desistia na hora se a consulta do dia atual falhasse.
+
+Correção aplicada: nova função `request_json_with_retries` (3 tentativas, 5s de intervalo) usada em `find_latest_image`. Testes adicionados em `tests/test_app.py`. Executável reconstruído e reinstalado em `C:\Users\jairs\bin\`, atalho do Desktop reconfirmado.
+
 ## Verificações finais
 
 * Testes automatizados da busca retroativa, validação de imagem e preservação do arquivo anterior aprovados.

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import tkinter as tk
 import urllib.error
 import urllib.parse
@@ -53,12 +54,25 @@ def request_json(day: date, timeout: int = 20) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def request_json_with_retries(day: date, attempts: int = 3, delay: float = 5.0) -> dict:
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return request_json(day)
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            last_error = error
+            if attempt < attempts - 1:
+                log(f"Falha temporária ao consultar {day.isoformat()} (tentativa {attempt + 1}/{attempts}): {error}")
+                time.sleep(delay)
+    raise last_error
+
+
 def find_latest_image(start: date | None = None, lookback: int = 7) -> dict:
     current = start or date.today()
     last_error: Exception | None = None
     for offset in range(lookback + 1):
         try:
-            item = request_json(current - timedelta(days=offset))
+            item = request_json_with_retries(current - timedelta(days=offset))
             if item.get("media_type") == "image" and (item.get("hdurl") or item.get("url")):
                 return item
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:

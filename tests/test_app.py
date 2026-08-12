@@ -40,6 +40,21 @@ class AppTests(unittest.TestCase):
             result = app.find_latest_image(date(2026, 7, 29))
         self.assertEqual(result["date"], "2026-07-28")
 
+    def test_request_json_with_retries_recovers_after_transient_failure(self):
+        responses = [TimeoutError("timed out"), {"media_type": "image", "date": "2026-08-12"}]
+        with patch.object(app, "request_json", side_effect=responses):
+            with patch.object(app.time, "sleep") as mock_sleep:
+                result = app.request_json_with_retries(date(2026, 8, 12))
+        self.assertEqual(result["date"], "2026-08-12")
+        mock_sleep.assert_called_once()
+
+    def test_request_json_with_retries_raises_after_exhausting_attempts(self):
+        with patch.object(app, "request_json", side_effect=TimeoutError("timed out")):
+            with patch.object(app.time, "sleep") as mock_sleep:
+                with self.assertRaises(TimeoutError):
+                    app.request_json_with_retries(date(2026, 8, 12), attempts=3)
+        self.assertEqual(mock_sleep.call_count, 2)
+
     def test_download_rejects_non_image_and_preserves_destination(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory) / "wallpaper.jpg"
