@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import importlib.util
 import json
 import os
 import shutil
@@ -31,6 +32,8 @@ API_URL = "https://api.nasa.gov/planetary/apod"
 FEED_URL = "https://science.nasa.gov/feed/apod-basic/"
 FEED_NS = {"apod": "https://science.nasa.gov/apod/"}
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
+# Aviso opcional por Telegram (só existe na máquina do autor; sem o script, o aviso é ignorado).
+NOTIFY_SCRIPT = Path(os.environ.get("WALLPAPER_NASA_NOTIFY_SCRIPT", "C:/Users/jairs/Scripts/telegram_direto.py"))
 TASK_NAME = APP_NAME
 APP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / APP_NAME
 SOURCE_PATH = APP_DIR / "imagem_nasa_original.jpg"
@@ -44,6 +47,32 @@ def log(message: str) -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     with LOG_PATH.open("a", encoding="utf-8") as stream:
         stream.write(f"{date.today().isoformat()} | {message}\n")
+
+
+def notify_once_a_day(kind: str, text: str) -> None:
+    """Avisa pelo Telegram no máximo uma vez por dia para cada tipo de problema.
+    Nunca levanta exceção: o aviso não pode derrubar a atualização do papel de parede."""
+    state_path = APP_DIR / "notify_state.json"
+    try:
+        if not NOTIFY_SCRIPT.exists():
+            return
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            state = {}
+        today = date.today().isoformat()
+        if state.get(kind) == today:
+            return
+        spec = importlib.util.spec_from_file_location("telegram_direto", NOTIFY_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # nosec B102 - script local do próprio autor
+        ok, detail = module.enviar(f"[Claude] {APP_NAME}\n{text}\nLog: {LOG_PATH}")
+        log(f"Aviso Telegram ({kind}): {detail}")
+        if ok:
+            state[kind] = today
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+    except Exception as error:  # noqa: BLE001
+        log(f"Aviso Telegram falhou ({kind}): {error}")
 
 
 def request_json(day: date, timeout: int = 20) -> dict:
@@ -138,6 +167,7 @@ def find_latest_image(start: date | None = None, lookback: int = 7) -> dict:
     try:
         item = find_latest_image_from_feed()
         log(f"API da NASA sem foto válida; usando o feed oficial: {item['date']} | {item['title']}")
+        item["fonte"] = "feed"
         return item
     except (OSError, RuntimeError, ValueError, ET.ParseError) as error:
         last_error = error
@@ -453,7 +483,15 @@ def main() -> int:
         install_schedule()
         return 0
     if args.background:
-        success, _, _ = update_wallpaper()
+        success, message, item = update_wallpaper()
+        if not success:
+            notify_once_a_day("falha", f"Não consegui trocar o papel de parede hoje.\n{message}")
+        elif item.get("fonte") == "feed":
+            notify_once_a_day(
+                "api_degradada",
+                "A API oficial do APOD não devolveu uma foto válida; usei o feed science.nasa.gov. "
+                "O papel de parede foi trocado, mas a API precisa de atenção.",
+            )
         return 0 if success else 1
     APP_DIR.mkdir(parents=True, exist_ok=True)
     WallpaperApp().mainloop()

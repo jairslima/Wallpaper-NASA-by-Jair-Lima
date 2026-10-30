@@ -79,6 +79,22 @@ class AppTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 app.fetch_feed_items()
 
+    def test_notify_once_a_day_sends_once_and_never_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "tg.py"
+            script.write_text("def enviar(t):\n    return True, 'enviado'\n", encoding="utf-8")
+            with patch.object(app, "APP_DIR", Path(tmp)), patch.object(app, "LOG_PATH", Path(tmp) / "l.log"), patch.object(
+                app, "NOTIFY_SCRIPT", script
+            ):
+                app.notify_once_a_day("falha", "x")
+                app.notify_once_a_day("falha", "x")
+                log_text = (Path(tmp) / "l.log").read_text(encoding="utf-8")
+                state = (Path(tmp) / "notify_state.json").read_text(encoding="utf-8")
+            self.assertEqual(log_text.count("Aviso Telegram (falha)"), 1)
+            self.assertIn(date.today().isoformat(), state)
+            with patch.object(app, "NOTIFY_SCRIPT", Path(tmp) / "inexistente.py"):
+                app.notify_once_a_day("outro", "x")  # não levanta
+
     def test_request_json_with_retries_recovers_after_transient_failure(self):
         responses = [TimeoutError("timed out"), {"media_type": "image", "date": "2026-08-12"}]
         with patch.object(app, "request_json", side_effect=responses):
