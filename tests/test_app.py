@@ -40,6 +40,45 @@ class AppTests(unittest.TestCase):
             result = app.find_latest_image(date(2026, 7, 29))
         self.assertEqual(result["date"], "2026-07-28")
 
+    def test_find_latest_image_uses_feed_when_api_returns_logo(self):
+        logo = {
+            "media_type": "image",
+            "date": "2026-10-30",
+            "title": "NASA Science",
+            "hdurl": "https://science.nasa.gov/wp-content/themes/nasa-child/assets/images/nasa-logo@2x.png",
+        }
+        photo = {"media_type": "image", "date": "2026-10-30", "title": "Ghost", "hdurl": "https://x/apod/a.jpg?w=1"}
+        with patch.object(app, "request_json", return_value=logo), patch.object(
+            app, "fetch_feed_items", return_value=[{**photo, "media_type": "other", "hdurl": "https://youtu.be/x"}, photo]
+        ):
+            result = app.find_latest_image(date(2026, 10, 30))
+        self.assertEqual(result["title"], "Ghost")
+
+    def test_find_latest_image_uses_feed_when_api_is_down(self):
+        photo = {"media_type": "image", "date": "2026-10-30", "title": "Ghost", "hdurl": "https://x/apod/a.png"}
+        with patch.object(app, "request_json", side_effect=TimeoutError("x")), patch.object(
+            app.time, "sleep"
+        ), patch.object(app, "fetch_feed_items", return_value=[photo]):
+            self.assertEqual(app.find_latest_image(date(2026, 10, 30))["title"], "Ghost")
+
+    def test_fetch_feed_items_parses_rss(self):
+        xml = (
+            b'<rss xmlns:apod="https://science.nasa.gov/apod/"><channel><item><title>T</title>'
+            b"<pubDate>Fri, 30 Oct 2026 04:05:00 +0000</pubDate>"
+            b"<apod:hdurl>https://x/apod/a.jpg?w=10&#038;h=5</apod:hdurl></item></channel></rss>"
+        )
+        with patch.object(app.urllib.request, "urlopen", return_value=Response(xml, "text/xml")):
+            items = app.fetch_feed_items()
+        self.assertEqual(items[0]["date"], "2026-10-30")
+        self.assertEqual(items[0]["hdurl"], "https://x/apod/a.jpg?w=10&h=5")
+        self.assertTrue(app.is_real_photo(items[0]))
+
+    def test_fetch_feed_items_rejects_entity_bomb(self):
+        xml = b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaa">]><rss><channel/></rss>'
+        with patch.object(app.urllib.request, "urlopen", return_value=Response(xml, "text/xml")):
+            with self.assertRaises(RuntimeError):
+                app.fetch_feed_items()
+
     def test_request_json_with_retries_recovers_after_transient_failure(self):
         responses = [TimeoutError("timed out"), {"media_type": "image", "date": "2026-08-12"}]
         with patch.object(app, "request_json", side_effect=responses):

@@ -53,3 +53,11 @@ Correção aplicada: nova função `request_json_with_retries` (3 tentativas, 5s
 * Modo panorâmico confirmado em dois monitores reais, sem alteração da proporção.
 * Continuidade da composição entre as telas confirmada visualmente pelo autor.
 * `.gitignore`, licença MIT e ausência de credenciais versionadas verificadas.
+
+## Incidente 30/10/2026: API APOD devolvendo o logo da NASA
+
+- **Sintoma:** o app "atualizava", mas o papel de parede ficava com o logo da NASA (título "NASA Science"), todo dia desde pelo menos 04/10, e o botão manual não mudava nada.
+- **Causa:** o `apod.nasa.gov` foi migrado para `science.nasa.gov/apod/`. A API `api.nasa.gov/planetary/apod` passou a ignorar o parâmetro `date` e a devolver `url`/`hdurl` apontando para `nasa-logo@2x.png` (121x102 px), com o texto do dia certo.
+- **Correção:** `is_real_photo` rejeita logo/tema; `fetch_feed_items` lê o feed oficial `https://science.nasa.gov/feed/apod-basic/` (campos `apod:hdurl`, `pubDate`) como plano B quando a API falha ou devolve imagem inválida. `update_wallpaper` agora baixa de novo se a URL da imagem mudar ou se o original sumir. 10 testes passando; exe reconstruído e reinstalado em `~/bin`.
+- **Segurança:** feed XML recusa DTD/ENTITY e limita 2 MB (bandit B314), com teste.
+- **Estado:** foto do dia (Haunting the Cepheus Flare) aplicada e conferida visualmente.

@@ -17,7 +17,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import winreg
+import xml.etree.ElementTree as ET  # nosec B405 - feed validado em fetch_feed_items
 from datetime import date, timedelta
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -26,6 +28,9 @@ from PIL import Image, ImageOps, ImageTk, UnidentifiedImageError
 
 APP_NAME = "Wallpaper NASA by Jair Lima"
 API_URL = "https://api.nasa.gov/planetary/apod"
+FEED_URL = "https://science.nasa.gov/feed/apod-basic/"
+FEED_NS = {"apod": "https://science.nasa.gov/apod/"}
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
 TASK_NAME = APP_NAME
 APP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / APP_NAME
 SOURCE_PATH = APP_DIR / "imagem_nasa_original.jpg"
@@ -67,18 +72,75 @@ def request_json_with_retries(day: date, attempts: int = 3, delay: float = 5.0) 
     raise last_error
 
 
+def is_real_photo(item: dict) -> bool:
+    """A API da NASA passou a devolver o logo do site no lugar da foto; só aceita foto de verdade."""
+    url = (item.get("hdurl") or item.get("url") or "").lower()
+    path = urllib.parse.urlparse(url).path
+    return (
+        item.get("media_type") == "image"
+        and path.endswith(IMAGE_EXTENSIONS)
+        and "nasa-logo" not in path
+        and "/themes/" not in path
+    )
+
+
+def fetch_feed_items(timeout: int = 20) -> list[dict]:
+    """Lê o feed oficial do APOD em science.nasa.gov, do mais novo para o mais antigo."""
+    request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        data = response.read(2_000_000)
+    # Feed legítimo não tem DTD; recusar evita bomba de entidades (billion laughs).
+    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
+        raise RuntimeError("Feed da NASA com declaração DTD/ENTITY recusado.")
+    root = ET.fromstring(data)  # nosec B314 - DTD recusado acima, tamanho limitado
+    items = []
+    for node in root.iter("item"):
+        hdurl = (node.findtext("apod:hdurl", default="", namespaces=FEED_NS) or "").strip()
+        pub = node.findtext("pubDate", default="")
+        try:
+            day = parsedate_to_datetime(pub).date().isoformat()
+        except (TypeError, ValueError):
+            continue
+        is_image = urllib.parse.urlparse(hdurl).path.lower().endswith(IMAGE_EXTENSIONS)
+        items.append(
+            {
+                "date": day,
+                "title": (node.findtext("title", default="") or "").strip(),
+                "hdurl": hdurl,
+                "url": hdurl,
+                "media_type": "image" if is_image else "other",
+            }
+        )
+    return items
+
+
+def find_latest_image_from_feed() -> dict:
+    for item in fetch_feed_items():
+        if is_real_photo(item):
+            return item
+    raise RuntimeError("O feed da NASA não trouxe nenhuma imagem recente.")
+
+
 def find_latest_image(start: date | None = None, lookback: int = 7) -> dict:
     current = start or date.today()
     last_error: Exception | None = None
     for offset in range(lookback + 1):
         try:
             item = request_json_with_retries(current - timedelta(days=offset))
-            if item.get("media_type") == "image" and (item.get("hdurl") or item.get("url")):
+            if is_real_photo(item):
                 return item
+            if offset == 0 and item.get("media_type") == "image":
+                break  # a API respondeu, mas com imagem inválida (logo): usa o feed
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             last_error = error
             if offset == 0:
                 break
+    try:
+        item = find_latest_image_from_feed()
+        log(f"API da NASA sem foto válida; usando o feed oficial: {item['date']} | {item['title']}")
+        return item
+    except (OSError, RuntimeError, ValueError, ET.ParseError) as error:
+        last_error = error
     if last_error:
         raise RuntimeError(f"Não foi possível consultar a NASA: {last_error}") from last_error
     raise RuntimeError("Não foi encontrada uma imagem recente na NASA.")
@@ -205,12 +267,9 @@ def update_wallpaper() -> tuple[bool, str, dict]:
     previous = load_metadata()
     try:
         item = find_latest_image()
-        if item.get("date") != previous.get("date") or not SOURCE_PATH.exists():
-            if item.get("date") == previous.get("date") and WALLPAPER_PATH.exists():
-                shutil.copy2(WALLPAPER_PATH, SOURCE_PATH)
-            else:
-                image_url = item.get("hdurl") or item["url"]
-                download_and_validate(image_url, SOURCE_PATH)
+        same_image = item.get("date") == previous.get("date") and item.get("hdurl") == previous.get("hdurl")
+        if not same_image or not SOURCE_PATH.exists():
+            download_and_validate(item.get("hdurl") or item["url"], SOURCE_PATH)
         width, height, count = prepare_and_set_wallpaper(SOURCE_PATH)
         item["display"] = {"width": width, "height": height, "monitors": count}
         save_metadata(item)
