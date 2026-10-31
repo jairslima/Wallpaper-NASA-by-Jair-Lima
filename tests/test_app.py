@@ -79,6 +79,46 @@ class AppTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 app.fetch_feed_items()
 
+    def test_fetch_feed_items_html_error_page_is_retried_and_recovers(self):
+        html = b"<!DOCTYPE html><html><body>503 Service Unavailable</body></html>"
+        xml = (
+            b'<?xml version="1.0"?><rss xmlns:apod="https://science.nasa.gov/apod/"><channel><item><title>T</title>'
+            b"<pubDate>Sat, 31 Oct 2026 04:05:00 +0000</pubDate>"
+            b"<apod:hdurl>https://x/apod/a.jpg</apod:hdurl></item></channel></rss>"
+        )
+        respostas = [Response(html, "text/html"), Response(xml, "text/xml")]
+        with patch.object(app.urllib.request, "urlopen", side_effect=respostas), patch.object(app.time, "sleep"):
+            items = app.fetch_feed_items()
+        self.assertEqual(items[0]["date"], "2026-10-31")
+
+    def test_fetch_feed_items_html_error_page_reports_clear_message(self):
+        html = b"<!DOCTYPE html><html><body>503</body></html>"
+        with patch.object(app.urllib.request, "urlopen", side_effect=lambda *a, **k: Response(html, "text/html")), patch.object(
+            app.time, "sleep"
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                app.fetch_feed_items()
+        self.assertIn("página HTML", str(ctx.exception))
+        self.assertNotIn("DTD", str(ctx.exception))
+
+    def test_fetch_feed_items_accepts_doctype_word_inside_item_text(self):
+        xml = (
+            b'<?xml version="1.0"?><rss xmlns:apod="https://science.nasa.gov/apod/"><channel><item><title>T</title>'
+            b"<pubDate>Sat, 31 Oct 2026 04:05:00 +0000</pubDate>"
+            b"<description><![CDATA[ exemplo <!DOCTYPE html> e <!ENTITY x> em texto ]]></description>"
+            b"<apod:hdurl>https://x/apod/a.jpg</apod:hdurl></item></channel></rss>"
+        )
+        with patch.object(app.urllib.request, "urlopen", return_value=Response(xml, "text/xml")):
+            items = app.fetch_feed_items()
+        self.assertEqual(len(items), 1)
+
+    def test_fetch_feed_items_network_error_is_retried(self):
+        xml = b'<rss xmlns:apod="https://science.nasa.gov/apod/"><channel/></rss>'
+        with patch.object(
+            app.urllib.request, "urlopen", side_effect=[OSError("HTTP Error 503"), Response(xml, "text/xml")]
+        ), patch.object(app.time, "sleep"):
+            self.assertEqual(app.fetch_feed_items(), [])
+
     def test_notify_once_a_day_sends_once_and_never_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             script = Path(tmp) / "tg.py"

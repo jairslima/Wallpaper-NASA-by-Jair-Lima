@@ -7,6 +7,7 @@ import ctypes
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -113,13 +114,19 @@ def is_real_photo(item: dict) -> bool:
     )
 
 
-def fetch_feed_items(timeout: int = 20) -> list[dict]:
-    """Lê o feed oficial do APOD em science.nasa.gov, do mais novo para o mais antigo."""
+def _fetch_feed_items_once(timeout: int = 20) -> list[dict]:
+    """Uma leitura do feed oficial do APOD em science.nasa.gov, do mais novo para o mais antigo."""
     request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         data = response.read(2_000_000)
-    # Feed legítimo não tem DTD; recusar evita bomba de entidades (billion laughs).
-    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
+    # Servidor instável (503, CDN) pode devolver uma página HTML de erro no lugar do XML.
+    if data.lstrip()[:20].lower().startswith((b"<!doctype html", b"<html")):
+        raise RuntimeError("O feed da NASA devolveu uma página HTML em vez do XML (instabilidade temporária do servidor).")
+    # Declaração DTD/ENTITY só existe antes do elemento raiz. Feed legítimo não tem; recusar evita bomba de
+    # entidades (billion laughs). Só o prólogo é examinado: o texto das notícias pode citar essas palavras.
+    primeiro_elemento = re.search(rb"<[A-Za-z_]", data)
+    prologo = re.sub(rb"<!--.*?-->", b"", data[: primeiro_elemento.start() if primeiro_elemento else len(data)], flags=re.S).lower()
+    if b"<!doctype" in prologo or b"<!entity" in prologo:
         raise RuntimeError("Feed da NASA com declaração DTD/ENTITY recusado.")
     root = ET.fromstring(data)  # nosec B314 - DTD recusado acima, tamanho limitado
     items = []
@@ -141,6 +148,22 @@ def fetch_feed_items(timeout: int = 20) -> list[dict]:
             }
         )
     return items
+
+
+def fetch_feed_items(timeout: int = 20, attempts: int = 3, delay: float = 5.0) -> list[dict]:
+    """Lê o feed com nova tentativa, como na API: um soluço do servidor não pode derrubar a troca do dia."""
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return _fetch_feed_items_once(timeout)
+        except (OSError, RuntimeError, ET.ParseError) as error:
+            if "DTD/ENTITY" in str(error):
+                raise  # recusa de segurança: insistir não muda nada
+            last_error = error
+            if attempt < attempts - 1:
+                log(f"Falha temporária ao ler o feed da NASA (tentativa {attempt + 1}/{attempts}): {error}")
+                time.sleep(delay)
+    raise last_error
 
 
 def find_latest_image_from_feed() -> dict:
